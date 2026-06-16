@@ -4,17 +4,29 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from gitlog import parse_numstat
+from gitlog import classify_commit, parse_numstat
 from heuristic import baseline_hours
 
 
 def test_parse_numstat():
     # two text files plus a binary file (reported as `-` / `-`)
     text = "10\t2\tsrc/app.py\n5\t0\tREADME.md\n-\t-\tassets/logo.png\n"
-    files, insertions, deletions = parse_numstat(text)
-    assert files == 3            # binary file still counts as a changed file
-    assert insertions == 15      # 10 + 5 (+ 0 for binary)
-    assert deletions == 2        # 2 + 0 (+ 0 for binary)
+    ns = parse_numstat(text)
+    assert ns.files_changed == 3            # binary file still counts as a changed file
+    assert ns.insertions == 15              # 10 + 5 (+ 0 for binary)
+    assert ns.deletions == 2                # 2 + 0 (+ 0 for binary)
+    assert ns.paths == ["src/app.py", "README.md", "assets/logo.png"]
+
+
+def test_classify_commit():
+    # every file is documentation -> docs
+    assert classify_commit(["README.md", "docs/guide.rst", "CHANGELOG"]) == "docs"
+    # any source file present -> code
+    assert classify_commit(["README.md", "src/app.py"]) == "code"
+    # config-only (e.g. requirements.txt, .gitignore) counts as code, not docs
+    assert classify_commit(["requirements.txt", ".gitignore"]) == "code"
+    # no files -> code (nothing to treat as docs)
+    assert classify_commit([]) == "code"
 
 
 def test_baseline_hours():

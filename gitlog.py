@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import NamedTuple
 
 UNIT_SEP = "\x1f"  # field separator that will not appear in commit metadata
 DIFF_TRUNCATE_CHARS = 12_000  # keep diffs within Groq's tokens-per-minute window
+
+# A commit is "docs" only if EVERY changed file is documentation. Config (.gitignore,
+# requirements.txt, .yml, ...) deliberately counts as code, not docs.
+DOC_EXTS = {".md", ".markdown", ".rst", ".adoc"}
+DOC_NAMES = {"LICENSE", "COPYING", "AUTHORS", "CHANGELOG", "CONTRIBUTING", "NOTICE"}
 
 
 @dataclass
@@ -22,6 +28,7 @@ class CommitData:
     insertions: int
     deletions: int
     diff: str
+    paths: list[str] = field(default_factory=list)
     diff_truncated: bool = False
 
 
@@ -59,13 +66,21 @@ def has_commits(repo: str) -> bool:
         return False
 
 
-def parse_numstat(text: str) -> tuple[int, int, int]:
-    """Parse `git show --numstat` output -> (files_changed, insertions, deletions).
+class NumStat(NamedTuple):
+    files_changed: int
+    insertions: int
+    deletions: int
+    paths: list[str]
+
+
+def parse_numstat(text: str) -> NumStat:
+    """Parse `git show --numstat` output into counts plus the changed file paths.
 
     Each data line is `<added>\\t<deleted>\\t<path>`. Binary files report `-` for the
     counts; we count them as a changed file contributing 0 insertions/deletions.
     """
     files = insertions = deletions = 0
+    paths: list[str] = []
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -74,11 +89,29 @@ def parse_numstat(text: str) -> tuple[int, int, int]:
             continue
         added, deleted = parts[0], parts[1]
         files += 1
+        paths.append("\t".join(parts[2:]))  # join guards against rare tabbed paths
         if added.isdigit():
             insertions += int(added)
         if deleted.isdigit():
             deletions += int(deleted)
-    return files, insertions, deletions
+    return NumStat(files, insertions, deletions, paths)
+
+
+def _is_doc_path(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    if path == "docs" or path.startswith("docs/") or "/docs/" in path:
+        return True
+    if name in DOC_NAMES:
+        return True
+    dot = name.rfind(".")
+    return (name[dot:].lower() if dot != -1 else "") in DOC_EXTS
+
+
+def classify_commit(paths: list[str]) -> str:
+    """'docs' when every changed file is documentation, otherwise 'code'."""
+    if paths and all(_is_doc_path(p) for p in paths):
+        return "docs"
+    return "code"
 
 
 def _list_hashes(repo: str, days: int, author: str | None) -> list[str]:
@@ -94,7 +127,7 @@ def _load_commit(repo: str, h: str) -> CommitData:
     full_hash, short, an, ae, aiso, subject = fields[:6]
     body = fields[6].strip() if len(fields) > 6 else ""
 
-    files, ins, dels = parse_numstat(_run_git(repo, ["show", h, "--numstat", "--format="]))
+    ns = parse_numstat(_run_git(repo, ["show", h, "--numstat", "--format="]))
 
     diff = _run_git(repo, ["show", h, "-p", "--format="]).strip("\n")
     truncated = len(diff) > DIFF_TRUNCATE_CHARS
@@ -111,10 +144,11 @@ def _load_commit(repo: str, h: str) -> CommitData:
         author=an,
         author_email=ae,
         timestamp=datetime.fromisoformat(aiso),
-        files_changed=files,
-        insertions=ins,
-        deletions=dels,
+        files_changed=ns.files_changed,
+        insertions=ns.insertions,
+        deletions=ns.deletions,
         diff=diff,
+        paths=ns.paths,
         diff_truncated=truncated,
     )
 

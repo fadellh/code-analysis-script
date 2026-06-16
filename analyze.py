@@ -67,8 +67,10 @@ def main() -> int:
     for idx, c in enumerate(commits):
         baseline = baseline_hours(c.insertions, c.deletions, c.files_changed)
         gap = commit_gap_hours(c.timestamp, _previous_timestamp(commits, idx))
-        print(f"analyzing {c.short_hash} ({idx + 1}/{len(commits)})...", file=sys.stderr)
-        analysis = analyze_commit(client, args.model, c, baseline, gap)
+        kind = gitlog.classify_commit(c.paths)
+        tag = " [docs]" if kind == "docs" else ""
+        print(f"analyzing {c.short_hash} ({idx + 1}/{len(commits)}){tag}...", file=sys.stderr)
+        analysis = analyze_commit(client, args.model, c, baseline, gap, kind)
         items.append((c, analysis, baseline, gap))
         if idx + 1 < len(commits):
             time.sleep(1.0)  # pace requests to respect Groq's tokens-per-minute window
