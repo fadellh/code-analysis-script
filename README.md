@@ -91,6 +91,10 @@ cp .env.example .env        # then edit .env and add your key:  GROQ_API_KEY=gsk
 
 ## Example report
 
+A full real-world run against a Java microservices repo is checked in as
+**[`sample-report.md`](sample-report.md)** (it uses a wide `--days` window to reach that
+repo's history). The condensed example below shows the format:
+
 ```markdown
 # Commit Analysis Report
 
