@@ -1,5 +1,7 @@
 # Commit Analysis Report
 
+> **Note:** Generated against a public but *dormant* demo repo (`mwc-java`, last active Feb 2025), so `--days 500` was used to reach its commit history. The tool's default window is the past **7 days** (`--days 7`).
+
 _Repo: `mwc-java` · Branch: `detailing` · Window: last 500 days (2025-02-02 → 2026-06-17) · Author: all authors_
 
 ## Summary
